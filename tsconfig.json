@@ -5,17 +5,17 @@
     "lib": ["ES2020"],
     "outDir": "./dist",
     "rootDir": "./",
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/*": ["./*"]
     }
   },
-  "include": ["server.ts", "lib/**/*", "middleware/**/*", "routes/**/*", "controllers/**/*"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
