@@ -1,0 +1,74 @@
+# Render.com Configuration for AttendBox Backend
+
+services:
+  # Main Backend API
+  - type: web
+    name: attendbox-backend
+    env: node
+    region: singapore
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DB_HOST
+        fromDatabase:
+          name: attendbox-db
+          property: host
+      - key: DB_USER
+        fromDatabase:
+          name: attendbox-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: attendbox-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: attendbox-db
+          property: database
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+  # Python Trilateration Server
+  - type: web
+    name: attendbox-trilateration
+    env: python
+    region: singapore
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python trilateration_server/trilateration_server_MULTI.py
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DB_HOST
+        fromDatabase:
+          name: attendbox-db
+          property: host
+      - key: DB_USER
+        fromDatabase:
+          name: attendbox-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: attendbox-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: attendbox-db
+          property: database
+
+databases:
+  - name: attendbox-db
+    plan: starter
+    databaseName: attendbox_db
+    user: attendbox

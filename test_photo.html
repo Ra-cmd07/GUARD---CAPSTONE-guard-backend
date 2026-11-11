@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Photo Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        .test { margin: 20px 0; padding: 15px; background: white; border-radius: 8px; }
+        img { max-width: 400px; border: 2px solid #ddd; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>📸 Photo URL Test</h1>
+    
+    <div class="test">
+        <h3>Test 1: Direct URL (localhost:5000)</h3>
+        <p><strong>URL:</strong> <code id="url1">http://localhost:5000/uploads/attendance_photos/scan_1784176972130_Kurtt.jpg</code></p>
+        <img 
+            id="img1" 
+            src="http://localhost:5000/uploads/attendance_photos/scan_1784176972130_Kurtt.jpg"
+            onload="document.getElementById('status1').innerHTML = '✅ LOADED'; document.getElementById('status1').className = 'success';"
+            onerror="document.getElementById('status1').innerHTML = '❌ FAILED TO LOAD'; document.getElementById('status1').className = 'error';"
+        />
+        <p><strong>Status:</strong> <span id="status1">Loading...</span></p>
+    </div>
+
+    <div class="test">
+        <h3>Test 2: Relative URL from backend</h3>
+        <p><strong>URL:</strong> <code id="url2">/uploads/attendance_photos/scan_1784176972130_Kurtt.jpg</code></p>
+        <p><em>(This will only work if opened from backend static server)</em></p>
+        <img 
+            id="img2" 
+            src="/uploads/attendance_photos/scan_1784176972130_Kurtt.jpg"
+            onload="document.getElementById('status2').innerHTML = '✅ LOADED'; document.getElementById('status2').className = 'success';"
+            onerror="document.getElementById('status2').innerHTML = '❌ FAILED TO LOAD'; document.getElementById('status2').className = 'error';"
+        />
+        <p><strong>Status:</strong> <span id="status2">Loading...</span></p>
+    </div>
+
+    <div class="test">
+        <h3>JavaScript Fetch Test</h3>
+        <button onclick="testFetch()">Test Fetch</button>
+        <pre id="fetchResult">Click button to test</pre>
+    </div>
+
+    <script>
+        async function testFetch() {
+            const resultEl = document.getElementById('fetchResult');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:5000/uploads/attendance_photos/scan_1784176972130_Kurtt.jpg');
+                resultEl.textContent = `✅ Fetch successful!\n` +
+                    `Status: ${response.status}\n` +
+                    `Content-Type: ${response.headers.get('Content-Type')}\n` +
+                    `Content-Length: ${response.headers.get('Content-Length')} bytes\n` +
+                    `CORS headers:\n` +
+                    `  Access-Control-Allow-Origin: ${response.headers.get('Access-Control-Allow-Origin') || 'Not set'}\n`;
+            } catch (error) {
+                resultEl.textContent = `❌ Fetch failed!\n${error.message}`;
+            }
+        }
+
+        // Log console messages
+        console.log('🔍 Photo Test Page Loaded');
+        console.log('Expected URLs to test:');
+        console.log('1. http://localhost:5000/uploads/attendance_photos/scan_1784176972130_Kurtt.jpg');
+        console.log('2. /uploads/attendance_photos/scan_1784176972130_Kurtt.jpg');
+    </script>
+</body>
+</html>
