@@ -80,6 +80,10 @@ app.use(cors({
       /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
       /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,
       /^https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+      // Allow Cloudflare Pages frontend
+      /^https:\/\/.*\.pages\.dev$/,
+      // Allow Cloudflare Tunnel (trycloudflare.com)
+      /^https:\/\/.*\.trycloudflare\.com$/,
     ];
     
     // Allow requests with no origin (like mobile apps or Postman)
