@@ -1,49 +1,34 @@
-import { Pool } from 'pg';
+import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// PostgreSQL connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+const pool = mysql.createPool({
+  host:               process.env.DB_HOST     || '127.0.0.1',
+  port:               parseInt(process.env.DB_PORT || '3306'),
+  user:               process.env.DB_USER     || 'root',
+  password:           process.env.DB_PASSWORD || '',
+  database:           process.env.DB_NAME     || 'attendbox_db',
+  waitForConnections: true,
+  connectionLimit:    10,
+  queueLimit:         0,
+  timezone:           '+08:00', // Philippine Time
 });
 
-console.log('🔌 PostgreSQL configuration:');
-console.log(`  Using DATABASE_URL: ${process.env.DATABASE_URL ? '✓ Set' : '✗ Not set'}`);
-console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log('🔌 MySQL configuration:');
+console.log(`  host: ${process.env.DB_HOST || '127.0.0.1'}`);
+console.log(`  port: ${process.env.DB_PORT || '3306'}`);
+console.log(`  user: ${process.env.DB_USER || 'root'}`);
+console.log(`  database: ${process.env.DB_NAME || 'attendbox_db'}`);
 
 // Test connection on startup
-pool.connect()
-  .then(client => {
-    console.log('✅ PostgreSQL connected successfully');
-    client.release();
+pool.getConnection()
+  .then(conn => {
+    console.log('✅ MySQL connected successfully');
+    conn.release();
   })
   .catch(err => {
-    console.error('❌ PostgreSQL connection failed:', err.message);
+    console.error('❌ MySQL connection failed:', err.message);
     process.exit(1);
   });
 
-// Compatibility wrapper to match mysql2 interface
-const execute = async (query: string, values?: any[]) => {
-  const client = await pool.connect();
-  try {
-    const result = await client.query(query, values);
-    return [result.rows, result.fields];
-  } finally {
-    client.release();
-  }
-};
-
-const query = async (sql: string, values?: any[]) => {
-  const [rows] = await execute(sql, values);
-  return rows;
-};
-
-export default {
-  execute,
-  query,
-  pool
-};
+export default pool;
