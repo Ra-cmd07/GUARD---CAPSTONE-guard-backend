@@ -58,6 +58,7 @@ import assignmentRoutes from './routes/assignmentRoutes';
 import recentAttendanceRoutes from './routes/recentAttendanceRoutes';
 import sf2Routes        from './routes/sf2Routes';
 import settingsRoutes    from './routes/settingsRoutes';
+import buildingRoutes    from './routes/buildingRoutes';
 import { checkAttendanceThresholds } from './controllers/attendanceAlertController';
 
 import { errorHandler } from './middleware/errorMiddleware';
@@ -165,6 +166,7 @@ app.use('/api/sf1',            sf1Routes);
 app.use('/api/fingerprint',    fingerprintRoutes);
 app.use('/api/sf2',            sf2Routes);
 app.use('/api/settings',       settingsRoutes);
+app.use('/api',                buildingRoutes);  // Building/Floor/Room routes
 
 // ─── Health Check ─────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
