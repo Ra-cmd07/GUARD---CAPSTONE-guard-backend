@@ -7,6 +7,9 @@ const express_1 = require("express");
 const db_1 = __importDefault(require("../lib/db"));
 const http_1 = __importDefault(require("http"));
 const router = (0, express_1.Router)();
+// Rate limiting: prevent duplicate scans within cooldown period
+const studentScanCooldown = {}; // studentId -> timestamp
+const COOLDOWN_MS = 3000; // 3 seconds cooldown between scans
 /**
  * POST /api/attendance/scan-ble
  * Web kiosk BLE scan endpoint
@@ -62,20 +65,86 @@ router.post('/scan-ble', async (req, res) => {
         const student = studentRows[0];
         console.log(`   ✅ Student info: ${student.name} (LRN: ${student.lrn})`);
         // ──────────────────────────────────────────────────────────────
+        // COOLDOWN CHECK: Prevent duplicate scans within 3 seconds
+        // ──────────────────────────────────────────────────────────────
+        const now = Date.now();
+        const lastScanTime = studentScanCooldown[student.id];
+        if (lastScanTime && (now - lastScanTime) < COOLDOWN_MS) {
+            const remainingSeconds = Math.ceil((COOLDOWN_MS - (now - lastScanTime)) / 1000);
+            console.log(`   ⏳ COOLDOWN: Student ${student.id} scanned ${Math.ceil((now - lastScanTime) / 1000)}s ago`);
+            console.log(`   ⏳ Please wait ${remainingSeconds} more second(s) before scanning again`);
+            return res.status(429).json({
+                error: 'Please wait before scanning again',
+                message: `Please wait ${remainingSeconds} seconds before scanning again`,
+                cooldown_remaining: remainingSeconds
+            });
+        }
+        // Update last scan time
+        studentScanCooldown[student.id] = now;
+        console.log(`   ✅ Cooldown check passed for student ${student.id}`);
+        // ──────────────────────────────────────────────────────────────
         // NO DUPLICATE CHECK - Allow unlimited scans per student
         // ──────────────────────────────────────────────────────────────
-        const now = new Date();
+        const currentTime = new Date();
         // Get Philippine date/time (UTC+8) - ADD 8 HOURS to UTC
-        const philippineTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+        const philippineTime = new Date(currentTime.getTime() + (8 * 60 * 60 * 1000));
         const today = philippineTime.toISOString().split('T')[0];
-        const timeStr = philippineTime.toLocaleTimeString('en-PH', { hour12: true });
+        // Format time correctly in 12-hour format with AM/PM
+        const hour24 = philippineTime.getUTCHours();
+        const minutes = philippineTime.getUTCMinutes();
+        const seconds = philippineTime.getUTCSeconds();
+        const hour12 = hour24 % 12 || 12; // Convert 0 to 12 for midnight, 13-23 to 1-11
+        const ampm = hour24 < 12 ? 'AM' : 'PM';
+        const timeStr = `${hour12}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} ${ampm}`;
         console.log(`   📅 Date calculation:`);
-        console.log(`      UTC time: ${now.toISOString()}`);
+        console.log(`      UTC time: ${currentTime.toISOString()}`);
         console.log(`      Philippine time: ${philippineTime.toISOString()}`);
+        console.log(`      Hour (24h): ${hour24}`);
+        console.log(`      Hour (12h): ${hour12} ${ampm}`);
         console.log(`      Date used: ${today}`);
         console.log(`      Time used: ${timeStr}`);
-        console.log(`   📩 Queueing SMS to parents (time: ${timeStr})...`);
-        queueSMSToParents(student.id, student.name, today, timeStr).catch(err => {
+        // Determine session based on hour
+        const session = hour24 < 12 ? 'AM' : 'PM';
+        // AUTO-TOGGLE: Check last record across both tables for THIS SESSION (AM/PM)
+        // Check verified attendance first, then fall back to partial (pending)
+        console.log(`   🔍 Checking last attendance for student ${student.id} on ${today} (session: ${session})...`);
+        const [lastRecord] = await db_1.default.execute(`SELECT status FROM (
+         SELECT status, created_at FROM attendance
+         WHERE student_id = ? AND date = ? AND session = ?
+         UNION ALL
+         SELECT status, created_at FROM partial_attendance
+         WHERE student_id = ? AND date = ? AND session = ?
+       ) combined
+       ORDER BY created_at DESC
+       LIMIT 1`, [student.id, today, session, student.id, today, session]);
+        let status;
+        if (lastRecord.length > 0) {
+            const lastStatus = lastRecord[0].status;
+            console.log(`   📊 Last status: ${lastStatus}`);
+            // Toggle based on last status IN THIS SESSION
+            if (lastStatus === 'Time-Out') {
+                // Last was Time-Out, so next is Time-In (check if late)
+                status = (hour24 > 8 || (hour24 === 8 && minutes > 0)) ? 'Late' : 'Time-In';
+                console.log(`   ✅ Toggling: Time-Out → ${status}`);
+            }
+            else {
+                // Last was Time-In or Late, so next is Time-Out
+                status = 'Time-Out';
+                console.log(`   ✅ Toggling: ${lastStatus} → Time-Out`);
+            }
+        }
+        else {
+            // No record for this session yet, first scan is Time-In (check if late)
+            status = (hour24 > 8 || (hour24 === 8 && minutes > 0)) ? 'Late' : 'Time-In';
+            console.log(`   ✅ First scan of session: ${status}`);
+        }
+        console.log(`   💾 Creating partial attendance (session: ${session}, status: ${status})...`);
+        // ──────────────────────────────────────────────────────────────
+        // STEP 1: Queue SMS to parents (async, non-blocking)
+        // Pass status to customize the message
+        // ──────────────────────────────────────────────────────────────
+        console.log(`   📩 Queueing SMS to parents (status: ${status}, time: ${timeStr})...`);
+        queueSMSToParents(student.id, student.name, today, timeStr, status).catch(err => {
             console.error('   ⚠️  SMS queueing error:', err);
         });
         // ──────────────────────────────────────────────────────────────
@@ -85,14 +154,6 @@ router.post('/scan-ble', async (req, res) => {
         triggerESP32GSM(kiosk.esp32_ip).catch(err => {
             console.error('   ⚠️  GSM trigger error:', err);
         });
-        // ──────────────────────────────────────────────────────────────
-        // STEP 3: Create partial attendance IMMEDIATELY
-        // (Don't wait for SMS success/failure)
-        // ──────────────────────────────────────────────────────────────
-        const hour = now.getHours();
-        const session = hour < 12 ? 'AM' : 'PM';
-        const status = hour > 8 ? 'Late' : 'Time-In';
-        console.log(`   💾 Creating partial attendance (session: ${session}, status: ${status})...`);
         await db_1.default.execute(`INSERT INTO partial_attendance
        (student_id, student_name, kiosk_id, scan_method, status, approval_status, 
         session, date, time_in, created_at)
@@ -104,8 +165,9 @@ router.post('/scan-ble', async (req, res) => {
             success: true,
             student_id: student.id,
             student_name: student.name,
+            attendance_status: status, // Time-In, Late, or Time-Out
             status: 'partial_attendance_recorded',
-            message: `${student.name} - Partial Attendance recorded!`
+            message: `${student.name} - ${status} recorded!`
         };
         console.log('   📨 Response:', JSON.stringify(response));
         console.log('═══════════════════════════════════════════════════\n');
@@ -157,12 +219,22 @@ async function callESP32Scan(esp32Ip) {
 /**
  * Queue SMS to parents (async)
  */
-async function queueSMSToParents(studentId, studentName, date, time) {
+async function queueSMSToParents(studentId, studentName, date, time, status) {
     const [parents] = await db_1.default.execute(`SELECT p.contact, p.name 
      FROM parent_student ps 
      JOIN parents p ON p.id = ps.parent_id 
      WHERE ps.student_id = ?`, [studentId]);
-    const message = `✅ ATTENDBOX: ${studentName} has arrived at school at ${time} via BLE scan. Date: ${date}.`;
+    // Change message based on status
+    let message;
+    if (status === 'Time-Out') {
+        message = `ATTENDBOX: ${studentName} has left school at ${time} via BLE scan. Date: ${date}.`;
+    }
+    else if (status === 'Late') {
+        message = `ATTENDBOX: ${studentName} has arrived late at school at ${time} via BLE scan. Date: ${date}.`;
+    }
+    else {
+        message = `ATTENDBOX: ${studentName} has arrived at school at ${time} via BLE scan. Date: ${date}.`;
+    }
     for (const parent of parents) {
         if (parent.contact) {
             await db_1.default.execute(`INSERT INTO sms_queue 
