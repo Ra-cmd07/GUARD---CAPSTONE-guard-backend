@@ -227,18 +227,105 @@ async function getStudentAttendance(req, res) {
         }
         const [confirmed] = await db_1.default.execute(q + ' ORDER BY date DESC, timestamp DESC', p);
         const [pending] = await db_1.default.execute(qPartial + ' ORDER BY date DESC, scanned_at DESC', pPartial);
-        const confirmedKeys = new Set(confirmed.map((r) => `${r.date_str}_${(r.session || 'AM').toUpperCase()}`));
-        const pendingFiltered = pending.filter((r) => {
-            const key = `${r.date_str}_${(r.session || 'AM').toUpperCase()}`;
-            return !confirmedKeys.has(key);
+        const recordMap = new Map();
+        // Helper to parse time and create full timestamp for comparison
+        const parseTimeToTimestamp = (dateStr, timeStr) => {
+            if (!timeStr)
+                return null;
+            // Parse "H:MM:SS AM/PM" format
+            const match = timeStr.match(/(\d+):(\d+):(\d+)\s*(AM|PM)/i);
+            if (!match)
+                return null;
+            let hours = parseInt(match[1]);
+            const minutes = parseInt(match[2]);
+            const seconds = parseInt(match[3]);
+            const meridiem = match[4].toUpperCase();
+            // Convert to 24-hour format
+            if (meridiem === 'PM' && hours !== 12)
+                hours += 12;
+            if (meridiem === 'AM' && hours === 12)
+                hours = 0;
+            const date = new Date(dateStr);
+            date.setHours(hours, minutes, seconds, 0);
+            return date;
+        };
+        // Process all confirmed records
+        confirmed.forEach((record) => {
+            const key = `${record.date_str}_${(record.session || 'AM').toUpperCase()}`;
+            if (!recordMap.has(key)) {
+                recordMap.set(key, {
+                    ...record,
+                    date_str: record.date_str,
+                    date: record.date_str,
+                    session: record.session,
+                    record_type: 'confirmed',
+                    status_label: record.status,
+                    time_in_timestamp: parseTimeToTimestamp(record.date_str, record.time_in),
+                    time_out_timestamp: parseTimeToTimestamp(record.date_str, record.time_out),
+                });
+            }
+            else {
+                const existing = recordMap.get(key);
+                // Update time_in if this record has a LATER time_in
+                if (record.time_in) {
+                    const newTimeIn = parseTimeToTimestamp(record.date_str, record.time_in);
+                    if (!existing.time_in_timestamp || (newTimeIn && newTimeIn > existing.time_in_timestamp)) {
+                        existing.time_in = record.time_in;
+                        existing.time_in_timestamp = newTimeIn;
+                    }
+                }
+                // Update time_out if this record has a LATER time_out
+                if (record.time_out) {
+                    const newTimeOut = parseTimeToTimestamp(record.date_str, record.time_out);
+                    if (!existing.time_out_timestamp || (newTimeOut && newTimeOut > existing.time_out_timestamp)) {
+                        existing.time_out = record.time_out;
+                        existing.time_out_timestamp = newTimeOut;
+                    }
+                }
+            }
         });
-        const all = [
-            ...confirmed.map(r => ({ ...r, date: r.date_str })),
-            ...pendingFiltered.map(r => ({
-                ...r, date: r.date_str,
-                status: `${r.status} (pending)`,
-            })),
-        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Process all pending records
+        pending.forEach((record) => {
+            const key = `${record.date_str}_${(record.session || 'AM').toUpperCase()}`;
+            if (!recordMap.has(key)) {
+                recordMap.set(key, {
+                    ...record,
+                    date_str: record.date_str,
+                    date: record.date_str,
+                    session: record.session,
+                    record_type: 'pending',
+                    status_label: `${record.status} (pending)`,
+                    time_in_timestamp: parseTimeToTimestamp(record.date_str, record.time_in),
+                    time_out_timestamp: parseTimeToTimestamp(record.date_str, record.time_out),
+                });
+            }
+            else {
+                const existing = recordMap.get(key);
+                // Update time_in if this pending record has a LATER time_in
+                if (record.time_in) {
+                    const newTimeIn = parseTimeToTimestamp(record.date_str, record.time_in);
+                    if (!existing.time_in_timestamp || (newTimeIn && newTimeIn > existing.time_in_timestamp)) {
+                        existing.time_in = record.time_in;
+                        existing.time_in_timestamp = newTimeIn;
+                        // Mark as pending if we're using pending data
+                        if (existing.record_type === 'confirmed') {
+                            existing.status_label = existing.status || record.status;
+                        }
+                    }
+                }
+                // Update time_out if this pending record has a LATER time_out
+                if (record.time_out) {
+                    const newTimeOut = parseTimeToTimestamp(record.date_str, record.time_out);
+                    if (!existing.time_out_timestamp || (newTimeOut && newTimeOut > existing.time_out_timestamp)) {
+                        existing.time_out = record.time_out;
+                        existing.time_out_timestamp = newTimeOut;
+                    }
+                }
+            }
+        });
+        // Convert map to array and sort
+        const all = Array.from(recordMap.values()).sort((a, b) => new Date(b.date_str).getTime() - new Date(a.date_str).getTime());
+        console.log(`📊 Student ${id} attendance: ${confirmed.length} confirmed + ${pending.length} pending = ${all.length} merged records (showing latest time_in and time_out per session)`);
         res.json(all);
     }
     catch (err) {

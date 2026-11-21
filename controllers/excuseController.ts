@@ -261,9 +261,9 @@ export async function resolveExcuseRequest(req: AuthRequest, res: Response) {
     // Update excuse request status
     await pool.query(
       `UPDATE excuse_requests
-       SET status = ?, teacher_note = ?, resolved_at = NOW()
+       SET status = ?, teacher_note = ?, teacher_id = ?, resolved_at = NOW()
        WHERE id = ?`,
-      [newStatus, teacher_note || null, id]
+      [newStatus, teacher_note || null, tRows[0].id, id]
     );
 
     // If APPROVED → set attendance status to 'Excused'

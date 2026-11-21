@@ -97,9 +97,10 @@ async function getFloorRooms(req, res) {
       JOIN building_floors bf ON bf.id = br.floor_id
       JOIN buildings b ON b.id = bf.building_id
       WHERE br.floor_id = ?
+        AND br.room_name != 'Room 2'
       ORDER BY br.room_number
     `, [floorId]);
-        console.log(`✅ Found ${rows.length} rooms for floor ${floorId}`);
+        console.log(`✅ Found ${rows.length} rooms for floor ${floorId} (Room 2 excluded)`);
         res.json(rows);
     }
     catch (error) {
@@ -203,58 +204,38 @@ async function getRoomStudents(req, res) {
     try {
         const { roomId } = req.params;
         console.log(`👥 Fetching students in room ${roomId}...`);
-        // Get room details including anchor_id
+        // Get room ESP32 IP
         const [roomRows] = await db_1.default.query(`
-      SELECT id, room_name, esp32_ip, anchor_id FROM building_rooms WHERE id = ?
+      SELECT esp32_ip, room_name FROM building_rooms WHERE id = ?
     `, [roomId]);
         if (roomRows.length === 0) {
             res.status(404).json({ error: 'Room not found' });
             return;
         }
         const room = roomRows[0];
-        // Get students detected by THIS room's anchor only
+        // Get students connected to this room's ESP32
+        // NOTE: Using ble_detections instead of phone_locations
         const [studentsRows] = await db_1.default.query(`
       SELECT DISTINCT
         s.id,
-        s.first_name,
-        s.last_name,
-        CONCAT(s.first_name, ' ', s.last_name) as student_name,
-        s.student_id_number,
+        s.name as student_name,
         s.grade,
-        s.section,
-        sl.coordinates,
-        sl.signal_strength as accuracy,
-        sl.timestamp as last_updated
+        s.section
       FROM students s
-      INNER JOIN student_locations sl ON sl.student_id = s.id
-      WHERE sl.is_active = 1
-        AND sl.room_id = ?
-        AND sl.anchor_id = ?
-        AND sl.timestamp > DATE_SUB(NOW(), INTERVAL 5 MINUTE)
-      ORDER BY sl.timestamp DESC
-    `, [roomId, room.anchor_id]);
-        // Parse coordinates into lat/lng
-        const students = studentsRows.map((student) => {
-            const [lat, lng] = student.coordinates ? student.coordinates.split(',').map(Number) : [0, 0];
-            return {
-                id: student.id,
-                student_name: student.student_name,
-                student_id_number: student.student_id_number,
-                grade: student.grade,
-                section: student.section,
-                latitude: lat,
-                longitude: lng,
-                accuracy: student.accuracy || 0,
-                last_updated: student.last_updated
-            };
-        });
-        console.log(`✅ Found ${students.length} students in room ${room.room_name} (anchor ${room.anchor_id})`);
+      WHERE s.id IN (
+        SELECT DISTINCT student_id 
+        FROM ble_detections 
+        WHERE location_name LIKE CONCAT('%', ?, '%')
+        AND detected_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+      )
+      ORDER BY s.name
+    `, [room.room_name]);
+        console.log(`✅ Found ${studentsRows.length} students in room ${room.room_name}`);
         res.json({
             room_name: room.room_name,
             esp32_ip: room.esp32_ip,
-            anchor_id: room.anchor_id,
-            students: students,
-            count: students.length
+            students: studentsRows,
+            count: studentsRows.length
         });
     }
     catch (error) {

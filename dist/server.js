@@ -62,7 +62,6 @@ const recentAttendanceRoutes_1 = __importDefault(require("./routes/recentAttenda
 const sf2Routes_1 = __importDefault(require("./routes/sf2Routes"));
 const settingsRoutes_1 = __importDefault(require("./routes/settingsRoutes"));
 const buildingRoutes_1 = __importDefault(require("./routes/buildingRoutes"));
-const anchorRoutes_1 = __importDefault(require("./routes/anchorRoutes"));
 const attendanceAlertController_1 = require("./controllers/attendanceAlertController");
 const errorMiddleware_1 = require("./middleware/errorMiddleware");
 const app = (0, express_1.default)();
@@ -74,7 +73,32 @@ app.use((0, helmet_1.default)({
     crossOriginResourcePolicy: false, // IMPORTANT: Disable this to allow image loading!
 }));
 app.use((0, cors_1.default)({
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+    origin: (origin, callback) => {
+        // Allow all local network origins (localhost, 192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+        const allowedPatterns = [
+            /^https?:\/\/localhost(:\d+)?$/,
+            /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+            /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+            /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+            /^https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+            // Allow Cloudflare Pages frontend
+            /^https:\/\/.*\.pages\.dev$/,
+            // Allow Cloudflare Tunnel (trycloudflare.com)
+            /^https:\/\/.*\.trycloudflare\.com$/,
+        ];
+        // Allow requests with no origin (like mobile apps or Postman)
+        if (!origin)
+            return callback(null, true);
+        // Check if origin matches any allowed pattern
+        const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
+        if (isAllowed) {
+            callback(null, true);
+        }
+        else {
+            console.warn(`⚠️  CORS blocked origin: ${origin}`);
+            callback(null, false);
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -138,8 +162,7 @@ app.use('/api/sf1', sf1Routes_1.default);
 app.use('/api/fingerprint', fingerprintRoutes_1.default);
 app.use('/api/sf2', sf2Routes_1.default);
 app.use('/api/settings', settingsRoutes_1.default);
-app.use('/api', buildingRoutes_1.default);
-app.use('/api/anchors', anchorRoutes_1.default); // ESP32 Plug-and-Play configuration
+app.use('/api', buildingRoutes_1.default); // Building/Floor/Room routes
 // ─── Health Check ─────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

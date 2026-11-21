@@ -101,6 +101,12 @@ async function kioskScan(req, res) {
         kiosk_id, photo_base64, // optional captured photo
         qr_data, // raw QR JSON string if scan_method = 'QR'
          } = req.body;
+        console.log('🔍 BACKEND RECEIVED:');
+        console.log('   scan_method:', scan_method);
+        console.log('   identifier:', identifier);
+        console.log('   identifier type:', typeof identifier);
+        console.log('   identifier length:', identifier?.length);
+        console.log('   kiosk_id:', kiosk_id);
         if (!scan_method || !identifier) {
             res.status(400).json({ error: 'scan_method and identifier are required' });
             return;
@@ -227,9 +233,8 @@ async function kioskScan(req, res) {
        FROM parent_student ps
        JOIN parents p ON ps.parent_id = p.id
        WHERE ps.student_id = ?`, [student.id]);
-        const statusEmoji = status === 'Time-In' ? '✅' : status === 'Late' ? '⏰' : '🔔';
         const timeDisplay = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const message = `${statusEmoji} ATTENDBOX: ${student.name} has ${status === 'Time-In' ? 'arrived at school' : status === 'Time-Out' ? 'left school' : 'arrived LATE'} at ${timeDisplay}. Date: ${today}.`;
+        const message = `ATTENDBOX: ${student.name} has ${status === 'Time-In' ? 'arrived at school' : status === 'Time-Out' ? 'left school' : 'arrived LATE'} at ${timeDisplay}. Date: ${today}.`;
         const smsResults = [];
         let anySMSQueued = false;
         for (const g of guardians) {

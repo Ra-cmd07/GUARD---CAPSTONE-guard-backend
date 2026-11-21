@@ -206,8 +206,8 @@ async function resolveExcuseRequest(req, res) {
         const newStatus = action === 'approve' ? 'approved' : 'rejected';
         // Update excuse request status
         await db_1.default.query(`UPDATE excuse_requests
-       SET status = ?, teacher_note = ?, resolved_at = NOW()
-       WHERE id = ?`, [newStatus, teacher_note || null, id]);
+       SET status = ?, teacher_note = ?, teacher_id = ?, resolved_at = NOW()
+       WHERE id = ?`, [newStatus, teacher_note || null, tRows[0].id, id]);
         // If APPROVED → set attendance status to 'Excused'
         if (action === 'approve') {
             const roleLabel = await (0, teacherController_1.buildTeacherRoleLabel)(tRows[0].id, excuse.section);

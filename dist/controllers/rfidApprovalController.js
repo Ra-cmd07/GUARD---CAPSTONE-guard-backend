@@ -213,9 +213,8 @@ async function approveRFID(req, res) {
        FROM parent_student ps
        JOIN parents p ON ps.parent_id = p.id
        WHERE ps.student_id = ?`, [student.id]);
-        const statusEmoji = status === 'Time-In' ? '✅' : status === 'Late' ? '⏰' : '🔔';
         const timeDisplay = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const message = `${statusEmoji} ATTENDBOX: ${student.name} has ${status === 'Time-In' ? 'arrived at school' : status === 'Time-Out' ? 'left school' : 'arrived LATE'} at ${timeDisplay}. Date: ${today}.`;
+        const message = `ATTENDBOX: ${student.name} has ${status === 'Time-In' ? 'arrived at school' : status === 'Time-Out' ? 'left school' : 'arrived LATE'} at ${timeDisplay}. Date: ${today}.`;
         for (const g of guardians) {
             if (g.contact) {
                 const sent = await sendSms(g.contact, message);

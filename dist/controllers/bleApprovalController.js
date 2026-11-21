@@ -183,8 +183,7 @@ async function approveDetection(req, res) {
        FROM parent_student ps
        JOIN parents p ON ps.parent_id = p.id
        WHERE ps.student_id = ?`, [student.id]);
-        const statusEmoji = attendanceStatus === 'Time-In' ? '✅' : attendanceStatus === 'Late' ? '⏰' : '🔔';
-        const message = `${statusEmoji} ATTENDBOX: ${student.name} has ${attendanceStatus === 'Time-In' ? 'arrived at school' : attendanceStatus === 'Time-Out' ? 'left school' : 'arrived LATE'} at ${localTime}. Date: ${localDate}.`;
+        const message = `ATTENDBOX: ${student.name} has ${attendanceStatus === 'Time-In' ? 'arrived at school' : attendanceStatus === 'Time-Out' ? 'left school' : 'arrived LATE'} at ${localTime}. Date: ${localDate}.`;
         for (const g of guardians) {
             if (g.contact) {
                 // NULL attendance_id — avoids FK violation (record is in partial_attendance, not attendance yet)
