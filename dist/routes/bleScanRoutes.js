@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = __importDefault(require("../lib/db"));
 const http_1 = __importDefault(require("http"));
+const notificationController_1 = require("../controllers/notificationController");
 const router = (0, express_1.Router)();
 // Rate limiting: prevent duplicate scans within cooldown period
 const studentScanCooldown = {}; // studentId -> timestamp
@@ -159,6 +160,34 @@ router.post('/scan-ble', async (req, res) => {
         session, date, time_in, created_at)
        VALUES (?, ?, ?, 'BLE', ?, 'PENDING', ?, ?, ?, NOW())`, [student.id, student.name, kiosk.id, status, session, today, timeStr]);
         console.log('   ✅ Partial attendance created!');
+        // ──────────────────────────────────────────────────────────────
+        // STEP 3: Create notification for student
+        // ──────────────────────────────────────────────────────────────
+        console.log('   🔔 Creating notification for student...');
+        try {
+            let notificationTitle;
+            let notificationMessage;
+            let notificationType = 'info';
+            if (status === 'Time-Out') {
+                notificationTitle = 'Time-Out Recorded';
+                notificationMessage = `You have successfully scanned out at ${kiosk.name}. Time: ${timeStr}`;
+            }
+            else if (status === 'Late') {
+                notificationTitle = 'Late Arrival Recorded';
+                notificationMessage = `You arrived late at ${kiosk.name}. Time: ${timeStr}`;
+                notificationType = 'warning';
+            }
+            else {
+                notificationTitle = 'Time-In Recorded';
+                notificationMessage = `You have successfully scanned in at ${kiosk.name}. Time: ${timeStr}`;
+            }
+            await (0, notificationController_1.createNotification)(student.id, notificationTitle, notificationMessage, notificationType, `/student/attendance` // Link to their attendance page
+            );
+            console.log('   ✅ Student notification created');
+        }
+        catch (notifError) {
+            console.error('   ⚠️  Notification creation error:', notifError);
+        }
         console.log('   📤 Sending success response to frontend...');
         // Return success to web kiosk
         const response = {

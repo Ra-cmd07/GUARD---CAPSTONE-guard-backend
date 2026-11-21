@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import pool from '../lib/db';
 import http from 'http';
+import { createNotification } from '../controllers/notificationController';
 
 const router = Router();
 
@@ -196,6 +197,40 @@ router.post('/scan-ble', async (req: Request, res: Response) => {
     );
 
     console.log('   ✅ Partial attendance created!');
+
+    // ──────────────────────────────────────────────────────────────
+    // STEP 3: Create notification for student
+    // ──────────────────────────────────────────────────────────────
+    console.log('   🔔 Creating notification for student...');
+    try {
+      let notificationTitle: string;
+      let notificationMessage: string;
+      let notificationType: 'info' | 'warning' | 'alert' = 'info';
+      
+      if (status === 'Time-Out') {
+        notificationTitle = 'Time-Out Recorded';
+        notificationMessage = `You have successfully scanned out at ${kiosk.name}. Time: ${timeStr}`;
+      } else if (status === 'Late') {
+        notificationTitle = 'Late Arrival Recorded';
+        notificationMessage = `You arrived late at ${kiosk.name}. Time: ${timeStr}`;
+        notificationType = 'warning';
+      } else {
+        notificationTitle = 'Time-In Recorded';
+        notificationMessage = `You have successfully scanned in at ${kiosk.name}. Time: ${timeStr}`;
+      }
+      
+      await createNotification(
+        student.id,
+        notificationTitle,
+        notificationMessage,
+        notificationType,
+        `/student/attendance` // Link to their attendance page
+      );
+      console.log('   ✅ Student notification created');
+    } catch (notifError) {
+      console.error('   ⚠️  Notification creation error:', notifError);
+    }
+
     console.log('   📤 Sending success response to frontend...');
 
     // Return success to web kiosk

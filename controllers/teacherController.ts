@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/authMiddleware';
 import pool from '../lib/db';
 import { format } from 'date-fns';
+import { createNotification } from './notificationController';
 
 // ─── Helper: get teacher row from DB ─────────────────────────────────
 async function getTeacherRow(userId: number): Promise<any | null> {
@@ -714,6 +715,25 @@ export async function verifyPartialAttendance(req: AuthRequest, res: Response) {
     // Remove from partial_attendance
     await pool.query(`DELETE FROM partial_attendance WHERE id = ?`, [attendance_id]);
 
+    // ── Create notification for student ──────────────────────────────
+    console.log('🔔 Creating attendance verification notification for student...');
+    try {
+      const sessionLabel = partial.session === 'AM' ? 'morning' : 'afternoon';
+      const notificationTitle = 'Attendance Verified';
+      const notificationMessage = `Your ${sessionLabel} attendance has been verified by ${teacher.name}. Status: ${finalStatus}`;
+      
+      await createNotification(
+        partial.student_id,
+        notificationTitle,
+        notificationMessage,
+        'info',
+        `/student/attendance` // Link to their attendance page
+      );
+      console.log('   ✅ Student notification created');
+    } catch (notifError) {
+      console.error('   ⚠️  Notification creation error:', notifError);
+    }
+
     res.json({ success: true, message: 'Attendance verified and moved to Final list' });
   } catch (error) {
     console.error('Error verifying attendance:', error);
@@ -1238,6 +1258,26 @@ export async function confirmAttendance(req: AuthRequest, res: Response) {
          AND is_verified = 0`,
       [student.id, dateStr, actualSession]
     );
+
+    // ── Create notification for student ──────────────────────────────
+    console.log('🔔 Creating attendance confirmation notification for student...');
+    try {
+      const sessionLabel = targetSession === 'AM' ? 'morning' : 'afternoon';
+      const subjectLabel = subjectVal ? ` for ${subjectVal}` : '';
+      const notificationTitle = 'Attendance Confirmed';
+      const notificationMessage = `Your ${sessionLabel} attendance${subjectLabel} has been verified by ${teacher.name}. Status: ${finalStatus}`;
+      
+      await createNotification(
+        student.id,
+        notificationTitle,
+        notificationMessage,
+        'info',
+        `/student/attendance` // Link to their attendance page
+      );
+      console.log('   ✅ Student notification created');
+    } catch (notifError) {
+      console.error('   ⚠️  Notification creation error:', notifError);
+    }
 
     res.json({
       success:      true,

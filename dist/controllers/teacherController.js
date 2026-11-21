@@ -17,6 +17,7 @@ exports.confirmAttendance = confirmAttendance;
 exports.autoMarkAbsent = autoMarkAbsent;
 const db_1 = __importDefault(require("../lib/db"));
 const date_fns_1 = require("date-fns");
+const notificationController_1 = require("./notificationController");
 // ─── Helper: get teacher row from DB ─────────────────────────────────
 async function getTeacherRow(userId) {
     const [rows] = await db_1.default.query(`SELECT t.id, t.user_id, t.name, t.section, t.subject, t.room, t.schedule, t.contact
@@ -574,6 +575,19 @@ async function verifyPartialAttendance(req, res) {
         console.log('   Cloudinary URL:', partial.cloudinary_url || 'Not yet uploaded');
         // Remove from partial_attendance
         await db_1.default.query(`DELETE FROM partial_attendance WHERE id = ?`, [attendance_id]);
+        // ── Create notification for student ──────────────────────────────
+        console.log('🔔 Creating attendance verification notification for student...');
+        try {
+            const sessionLabel = partial.session === 'AM' ? 'morning' : 'afternoon';
+            const notificationTitle = 'Attendance Verified';
+            const notificationMessage = `Your ${sessionLabel} attendance has been verified by ${teacher.name}. Status: ${finalStatus}`;
+            await (0, notificationController_1.createNotification)(partial.student_id, notificationTitle, notificationMessage, 'info', `/student/attendance` // Link to their attendance page
+            );
+            console.log('   ✅ Student notification created');
+        }
+        catch (notifError) {
+            console.error('   ⚠️  Notification creation error:', notifError);
+        }
         res.json({ success: true, message: 'Attendance verified and moved to Final list' });
     }
     catch (error) {
@@ -1000,6 +1014,20 @@ async function confirmAttendance(req, res) {
          AND DATE(CONVERT_TZ(date, '+00:00', '+08:00')) = ?
          AND session = ?
          AND is_verified = 0`, [student.id, dateStr, actualSession]);
+        // ── Create notification for student ──────────────────────────────
+        console.log('🔔 Creating attendance confirmation notification for student...');
+        try {
+            const sessionLabel = targetSession === 'AM' ? 'morning' : 'afternoon';
+            const subjectLabel = subjectVal ? ` for ${subjectVal}` : '';
+            const notificationTitle = 'Attendance Confirmed';
+            const notificationMessage = `Your ${sessionLabel} attendance${subjectLabel} has been verified by ${teacher.name}. Status: ${finalStatus}`;
+            await (0, notificationController_1.createNotification)(student.id, notificationTitle, notificationMessage, 'info', `/student/attendance` // Link to their attendance page
+            );
+            console.log('   ✅ Student notification created');
+        }
+        catch (notifError) {
+            console.error('   ⚠️  Notification creation error:', notifError);
+        }
         res.json({
             success: true,
             message: `${targetSession} attendance confirmed for ${student.name}`,
