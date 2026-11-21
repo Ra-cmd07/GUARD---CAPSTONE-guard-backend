@@ -28,7 +28,7 @@ async function getTeacherForStudent(studentId) {
     return rows.length > 0 ? rows[0] : null;
 }
 // ─── POST /parent/excuse ──────────────────────────────────────────────
-// Parent submits an excuse for their child's absence
+// Parent submits an excuse for their child's absence (with document upload)
 async function submitExcuse(req, res) {
     try {
         const userId = req.user?.id;
@@ -37,6 +37,12 @@ async function submitExcuse(req, res) {
         const { student_id, date, reason, attendance_id } = req.body;
         if (!student_id || !date || !reason?.trim())
             return res.status(400).json({ error: 'student_id, date, and reason are required' });
+        // Check if document was uploaded (REQUIRED)
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: 'Medical certificate or supporting document is required' });
+        }
+        const documentPath = file.path; // Cloudinary URL
         const parent = await getParentRow(userId);
         if (!parent)
             return res.status(404).json({ error: 'Parent profile not found' });
@@ -54,18 +60,20 @@ async function submitExcuse(req, res) {
         // Get student name
         const [studentRows] = await db_1.default.query(`SELECT name FROM students WHERE id = ?`, [student_id]);
         const studentName = studentRows[0]?.name || 'Student';
-        // Insert excuse request
+        // Insert excuse request with document
         const [result] = await db_1.default.query(`INSERT INTO excuse_requests
-         (student_id, parent_id, teacher_id, attendance_id, date, reason, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`, [student_id, parent.id, teacher?.id || null, attendance_id || null, date, reason.trim()]);
+         (student_id, parent_id, teacher_id, attendance_id, date, reason, document_path, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`, [student_id, parent.id, teacher?.id || null, attendance_id || null, date, reason.trim(), documentPath]);
+        console.log(`✅ Excuse request submitted with document: ${documentPath}`);
         // Notify the teacher via in-app notification
         if (teacher?.user_id) {
-            await (0, notificationController_1.createNotification)(teacher.user_id, '📋 New Excuse Request', `${parent.name} submitted an excuse for ${studentName} on ${(0, date_fns_1.format)(new Date(date + 'T00:00:00'), 'MMM d, yyyy')}`, 'info', '/teacher');
+            await (0, notificationController_1.createNotification)(teacher.user_id, '📋 New Excuse Request', `${parent.name} submitted an excuse for ${studentName} on ${(0, date_fns_1.format)(new Date(date + 'T00:00:00'), 'MMM d, yyyy')} with supporting document`, 'info', '/teacher');
         }
         res.status(201).json({
             success: true,
             message: 'Excuse request submitted successfully',
             excuseId: result.insertId,
+            documentPath: documentPath,
         });
     }
     catch (error) {
@@ -85,7 +93,7 @@ async function getParentExcuseRequests(req, res) {
             return res.status(404).json({ error: 'Parent profile not found' });
         const [rows] = await db_1.default.query(`SELECT er.id, er.student_id,
               DATE_FORMAT(er.date, '%Y-%m-%d') AS date,
-              er.reason,
+              er.reason, er.document_path,
               er.status, er.teacher_note, er.created_at, er.resolved_at,
               s.name AS student_name,
               t.name AS teacher_name
@@ -122,7 +130,7 @@ async function getTeacherExcuseRequests(req, res) {
             // ── Subject teacher mode: fetch requests for students in this specific assignment ──
             rows = (await db_1.default.query(`SELECT er.id, er.student_id,
                 DATE_FORMAT(er.date, '%Y-%m-%d') AS date,
-                er.reason,
+                er.reason, er.document_path,
                 er.status, er.teacher_note, er.created_at, er.resolved_at,
                 s.name AS student_name, s.lrn, s.section,
                 p.name AS parent_name, p.contact AS parent_contact
@@ -139,7 +147,7 @@ async function getTeacherExcuseRequests(req, res) {
             // ── Adviser mode: fetch requests for ALL students in any of this teacher's advisory assignments ──
             rows = (await db_1.default.query(`SELECT er.id, er.student_id,
                 DATE_FORMAT(er.date, '%Y-%m-%d') AS date,
-                er.reason,
+                er.reason, er.document_path,
                 er.status, er.teacher_note, er.created_at, er.resolved_at,
                 s.name AS student_name, s.lrn, s.section,
                 p.name AS parent_name, p.contact AS parent_contact

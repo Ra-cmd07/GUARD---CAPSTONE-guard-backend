@@ -1,5 +1,6 @@
 import express from 'express';
 import { protect } from '../middleware/authMiddleware';
+import { uploadExcuseDocument } from '../config/cloudinary';
 import {
   submitExcuse,
   getParentExcuseRequests,
@@ -12,8 +13,8 @@ const router = express.Router();
 router.use(protect);
 
 // ─── Parent routes ────────────────────────────────────────────────────
-// POST /api/excuse/parent         — parent submits excuse
-router.post('/parent', submitExcuse);
+// POST /api/excuse/parent         — parent submits excuse (with document upload)
+router.post('/parent', uploadExcuseDocument.single('document'), submitExcuse);
 // GET  /api/excuse/parent         — parent views their requests
 router.get('/parent', getParentExcuseRequests);
 

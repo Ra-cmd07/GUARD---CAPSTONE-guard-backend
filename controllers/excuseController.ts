@@ -29,7 +29,7 @@ async function getTeacherForStudent(studentId: number): Promise<any | null> {
 }
 
 // ─── POST /parent/excuse ──────────────────────────────────────────────
-// Parent submits an excuse for their child's absence
+// Parent submits an excuse for their child's absence (with document upload)
 export async function submitExcuse(req: AuthRequest, res: Response) {
   try {
     const userId = req.user?.id;
@@ -39,6 +39,14 @@ export async function submitExcuse(req: AuthRequest, res: Response) {
 
     if (!student_id || !date || !reason?.trim())
       return res.status(400).json({ error: 'student_id, date, and reason are required' });
+
+    // Check if document was uploaded (REQUIRED)
+    const file = (req as any).file;
+    if (!file) {
+      return res.status(400).json({ error: 'Medical certificate or supporting document is required' });
+    }
+
+    const documentPath = file.path; // Cloudinary URL
 
     const parent = await getParentRow(userId);
     if (!parent) return res.status(404).json({ error: 'Parent profile not found' });
@@ -68,20 +76,22 @@ export async function submitExcuse(req: AuthRequest, res: Response) {
     );
     const studentName = studentRows[0]?.name || 'Student';
 
-    // Insert excuse request
+    // Insert excuse request with document
     const [result]: any = await pool.query(
       `INSERT INTO excuse_requests
-         (student_id, parent_id, teacher_id, attendance_id, date, reason, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW())`,
-      [student_id, parent.id, teacher?.id || null, attendance_id || null, date, reason.trim()]
+         (student_id, parent_id, teacher_id, attendance_id, date, reason, document_path, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+      [student_id, parent.id, teacher?.id || null, attendance_id || null, date, reason.trim(), documentPath]
     );
+
+    console.log(`✅ Excuse request submitted with document: ${documentPath}`);
 
     // Notify the teacher via in-app notification
     if (teacher?.user_id) {
       await createNotification(
         teacher.user_id,
         '📋 New Excuse Request',
-        `${parent.name} submitted an excuse for ${studentName} on ${format(new Date(date + 'T00:00:00'), 'MMM d, yyyy')}`,
+        `${parent.name} submitted an excuse for ${studentName} on ${format(new Date(date + 'T00:00:00'), 'MMM d, yyyy')} with supporting document`,
         'info',
         '/teacher'
       );
@@ -91,6 +101,7 @@ export async function submitExcuse(req: AuthRequest, res: Response) {
       success: true,
       message: 'Excuse request submitted successfully',
       excuseId: result.insertId,
+      documentPath: documentPath,
     });
   } catch (error) {
     console.error('Error submitting excuse:', error);
@@ -111,7 +122,7 @@ export async function getParentExcuseRequests(req: AuthRequest, res: Response) {
     const [rows]: any = await pool.query(
       `SELECT er.id, er.student_id,
               DATE_FORMAT(er.date, '%Y-%m-%d') AS date,
-              er.reason,
+              er.reason, er.document_path,
               er.status, er.teacher_note, er.created_at, er.resolved_at,
               s.name AS student_name,
               t.name AS teacher_name
@@ -157,7 +168,7 @@ export async function getTeacherExcuseRequests(req: AuthRequest, res: Response) 
       rows = (await pool.query(
         `SELECT er.id, er.student_id,
                 DATE_FORMAT(er.date, '%Y-%m-%d') AS date,
-                er.reason,
+                er.reason, er.document_path,
                 er.status, er.teacher_note, er.created_at, er.resolved_at,
                 s.name AS student_name, s.lrn, s.section,
                 p.name AS parent_name, p.contact AS parent_contact
@@ -176,7 +187,7 @@ export async function getTeacherExcuseRequests(req: AuthRequest, res: Response) 
       rows = (await pool.query(
         `SELECT er.id, er.student_id,
                 DATE_FORMAT(er.date, '%Y-%m-%d') AS date,
-                er.reason,
+                er.reason, er.document_path,
                 er.status, er.teacher_note, er.created_at, er.resolved_at,
                 s.name AS student_name, s.lrn, s.section,
                 p.name AS parent_name, p.contact AS parent_contact

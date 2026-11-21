@@ -5,12 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
+const cloudinary_1 = require("../config/cloudinary");
 const excuseController_1 = require("../controllers/excuseController");
 const router = express_1.default.Router();
 router.use(authMiddleware_1.protect);
 // ─── Parent routes ────────────────────────────────────────────────────
-// POST /api/excuse/parent         — parent submits excuse
-router.post('/parent', excuseController_1.submitExcuse);
+// POST /api/excuse/parent         — parent submits excuse (with document upload)
+router.post('/parent', cloudinary_1.uploadExcuseDocument.single('document'), excuseController_1.submitExcuse);
 // GET  /api/excuse/parent         — parent views their requests
 router.get('/parent', excuseController_1.getParentExcuseRequests);
 // ─── Teacher routes ───────────────────────────────────────────────────
