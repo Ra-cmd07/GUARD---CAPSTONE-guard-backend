@@ -257,12 +257,24 @@ async function updateUser(req, res) {
     try {
         await conn.beginTransaction();
         const { id } = req.params;
-        const { name, age, gender, section, contact, address, subject, room, schedule, relationship, employee_id, lrn, grade, mac_address, rfid_uid, is_active, } = req.body;
+        const { username, // Added username support
+        name, age, gender, section, contact, address, subject, room, schedule, relationship, employee_id, lrn, grade, mac_address, rfid_uid, is_active, } = req.body;
         const [rows] = await conn.execute(`SELECT u.id, r.name AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?`, [id]);
         const user = rows[0];
         if (!user) {
             res.status(404).json({ error: 'User not found' });
             return;
+        }
+        // Update username if provided
+        if (username) {
+            // Check username uniqueness (exclude current user)
+            const [existing] = await conn.execute('SELECT id FROM users WHERE username = ? AND id != ?', [username, id]);
+            if (existing.length > 0) {
+                await conn.rollback();
+                res.status(400).json({ error: 'Username already taken' });
+                return;
+            }
+            await conn.execute('UPDATE users SET username = ?, updated_by = ? WHERE id = ?', [username, req.user.id, id]);
         }
         if (is_active !== undefined) {
             await conn.execute('UPDATE users SET is_active = ?, updated_by = ? WHERE id = ?', [is_active ? 1 : 0, req.user.id, id]);
@@ -275,6 +287,11 @@ async function updateUser(req, res) {
         }
         else if (user.role === 'parent') {
             await conn.execute('UPDATE parents SET name=?, relationship=?, contact=?, address=?, updated_by=? WHERE user_id=?', [name, relationship || null, contact || null, address || null, req.user.id, id]);
+        }
+        else if (user.role === 'admin') {
+            // Admin role doesn't have a separate profile table, update users.username already handled above
+            // Admin name can be stored in a separate admins table if it exists, or we can skip
+            // For now, just allow username update
         }
         else if (user.role === 'student') {
             const { last_name, first_name, middle_name, birthdate, birth_place, mother_tongue, ip_ethnic, religion, address_street, barangay, municipality, province, sf1_remarks } = req.body;
