@@ -20,8 +20,9 @@ router.post('/scan-ble', async (req: Request, res: Response) => {
   console.log('═══════════════════════════════════════════════════');
   
   try {
-    const { kiosk_id } = req.body;
+    const { kiosk_id, photo_base64 } = req.body;
     console.log('   Kiosk ID:', kiosk_id);
+    console.log('   Photo provided:', photo_base64 ? `Yes (${(photo_base64.length / 1024).toFixed(2)} KB)` : 'No');
 
     if (!kiosk_id) {
       console.log('   ❌ ERROR: No kiosk_id provided');
@@ -171,6 +172,42 @@ router.post('/scan-ble', async (req: Request, res: Response) => {
     console.log(`   💾 Creating partial attendance (session: ${session}, status: ${status})...`);
     
     // ──────────────────────────────────────────────────────────────
+    // SAVE PHOTO: Store captured photo from webcam
+    // ──────────────────────────────────────────────────────────────
+    let photoPath: string | null = null;
+    
+    if (photo_base64) {
+      try {
+        console.log('   📸 Saving captured photo...');
+        const fs = await import('fs');
+        const path = await import('path');
+        
+        // Create uploads directory if it doesn't exist
+        const uploadsDir = path.join(__dirname, '../../uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        // Generate unique filename
+        const timestamp = Date.now();
+        const filename = `ble_${student.id}_${timestamp}.jpg`;
+        const filepath = path.join(uploadsDir, filename);
+        
+        // Decode base64 and save
+        const buffer = Buffer.from(photo_base64, 'base64');
+        fs.writeFileSync(filepath, buffer);
+        
+        photoPath = `/uploads/${filename}`;
+        console.log(`   ✅ Photo saved: ${photoPath}`);
+      } catch (photoError) {
+        console.error('   ⚠️  Photo save error:', photoError);
+        // Continue without photo if save fails
+      }
+    } else {
+      console.log('   ⚠️  No photo provided in request');
+    }
+    
+    // ──────────────────────────────────────────────────────────────
     // STEP 1: Queue SMS to parents (async, non-blocking)
     // Pass status to customize the message
     // ──────────────────────────────────────────────────────────────
@@ -191,12 +228,21 @@ router.post('/scan-ble', async (req: Request, res: Response) => {
     await pool.execute(
       `INSERT INTO partial_attendance
        (student_id, student_name, kiosk_id, scan_method, status, approval_status, 
-        session, date, time_in, created_at)
-       VALUES (?, ?, ?, 'BLE', ?, 'PENDING', ?, ?, ?, NOW())`,
-      [student.id, student.name, kiosk.id, status, session, today, timeStr]
+        session, date, time_in, photo_path, created_at)
+       VALUES (?, ?, ?, 'BLE', ?, 'PENDING', ?, ?, ?, ?, NOW())`,
+      [student.id, student.name, kiosk.id, status, session, today, timeStr, photoPath]
     );
 
-    console.log('   ✅ Partial attendance created!');
+    // Get the inserted attendance_id
+    const [insertResult] = await pool.execute(
+      `SELECT id FROM partial_attendance 
+       WHERE student_id = ? AND date = ? AND session = ? 
+       ORDER BY created_at DESC LIMIT 1`,
+      [student.id, today, session]
+    ) as any[];
+    
+    const attendanceId = (insertResult as any[])[0]?.id;
+    console.log(`   ✅ Partial attendance created! ID: ${attendanceId}`);
 
     // ──────────────────────────────────────────────────────────────
     // STEP 3: Create notification for student
@@ -239,6 +285,8 @@ router.post('/scan-ble', async (req: Request, res: Response) => {
       student_id: student.id,
       student_name: student.name,
       attendance_status: status, // Time-In, Late, or Time-Out
+      attendance_id: attendanceId,
+      photo_path: photoPath,
       status: 'partial_attendance_recorded',
       message: `${student.name} - ${status} recorded!`
     };
