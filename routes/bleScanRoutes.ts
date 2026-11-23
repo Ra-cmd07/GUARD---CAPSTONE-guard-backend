@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import pool from '../lib/db';
 import http from 'http';
 import { createNotification } from '../controllers/notificationController';
+import { savePhotoLocally } from '../utils/localPhotoUpload';
 
 const router = Router();
 
@@ -179,25 +180,13 @@ router.post('/scan-ble', async (req: Request, res: Response) => {
     if (photo_base64) {
       try {
         console.log('   📸 Saving captured photo...');
-        const fs = await import('fs');
-        const path = await import('path');
         
-        // Create uploads directory if it doesn't exist
-        const uploadsDir = path.join(__dirname, '../../uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
+        // Clean base64 string (remove data:image prefix if present)
+        const base64Data = photo_base64.replace(/^data:image\/\w+;base64,/, '');
         
-        // Generate unique filename
-        const timestamp = Date.now();
-        const filename = `ble_${student.id}_${timestamp}.jpg`;
-        const filepath = path.join(uploadsDir, filename);
+        // Use the same photo saving method as other controllers
+        photoPath = await savePhotoLocally(base64Data, student.name, 'ble');
         
-        // Decode base64 and save
-        const buffer = Buffer.from(photo_base64, 'base64');
-        fs.writeFileSync(filepath, buffer);
-        
-        photoPath = `/uploads/${filename}`;
         console.log(`   ✅ Photo saved: ${photoPath}`);
       } catch (photoError) {
         console.error('   ⚠️  Photo save error:', photoError);
