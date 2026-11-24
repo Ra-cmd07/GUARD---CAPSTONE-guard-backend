@@ -60,6 +60,7 @@ import sf2Routes        from './routes/sf2Routes';
 import settingsRoutes    from './routes/settingsRoutes';
 import buildingRoutes    from './routes/buildingRoutes';
 import { checkAttendanceThresholds } from './controllers/attendanceAlertController';
+import { startPresenceMonitoring } from './utils/presenceMonitor';
 
 import { errorHandler } from './middleware/errorMiddleware';
 
@@ -280,6 +281,10 @@ async function findAvailablePort(startPort: number, attempts = 6): Promise<numbe
     };
     runWithDelay();
     console.log(`⏰ Attendance threshold checker scheduled (runs daily)`);
+
+    // ── BLE Presence Monitoring (60-min absence alerts) ──────────────
+    startPresenceMonitoring();
+    console.log(`👁️  BLE presence monitor started (checks every 15 min during school hours)`);
   });
 })();
 
