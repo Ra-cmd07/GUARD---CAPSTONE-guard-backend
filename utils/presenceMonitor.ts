@@ -27,6 +27,7 @@ async function checkMissingStudents(): Promise<void> {
     console.log('🔍 [Presence Monitor] Checking for missing students...');
 
     // Query: Find students not detected in last 60+ minutes
+    // Uses ble_detections table which stores BLE attendance scans
     const [missingStudents] = await pool.execute(`
       SELECT 
         s.id, 
@@ -38,9 +39,9 @@ async function checkMissingStudents(): Promise<void> {
         TIMESTAMPDIFF(MINUTE, bl.timestamp, NOW()) as minutes_missing
       FROM students s
       JOIN (
-        SELECT student_id, room_name, MAX(timestamp) as timestamp
-        FROM ble_location
-        WHERE DATE(timestamp) = CURDATE()
+        SELECT student_id, location_name as room_name, MAX(detected_at) as timestamp
+        FROM ble_detections
+        WHERE DATE(detected_at) = CURDATE()
         GROUP BY student_id
       ) bl ON bl.student_id = s.id
       WHERE TIMESTAMPDIFF(MINUTE, bl.timestamp, NOW()) >= ?
